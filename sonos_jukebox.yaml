@@ -1,0 +1,1361 @@
+sonos_jukebox:
+  name: Sonos Jukebox
+  version: v1.0.0
+  creator: Albus
+  supported:
+    - media-player
+  description: |
+    Vollständiger Sonos-Player für die Bubble Card <b>Media Player</b>: großes Cover, Fortschritt,
+    Zufall/Wiederholen, Gruppen-Lautstärke und Sleep-Timer – dazu die Bereiche
+    <b>Favoriten</b> (Sonos-Favoriten mit Cover), <b>Jukebox</b> (eigene Spotify-Playlists,
+    Spotify-Link einfügen, Spotify-Bibliothek), <b>Räume</b> (Lautsprecher zu- und abschalten,
+    eigene Lautstärke, Bass/Höhen/Loudness) und <b>Warteschlange</b>.
+    <br><br>
+    Am besten im Pop-up verwenden. Beispiel:
+    <code-block><pre>
+    type: custom:bubble-card
+    card_type: media-player
+    entity: media_player.kueche
+    modules:
+      - sonos_jukebox
+    sonos_jukebox:
+      accent_color: "#ffc47e"
+      playlists:
+        - name: Abendessen
+          uri: https://open.spotify.com/playlist/37i9dQZF1DX4xuWVBs4FgJ
+    </pre></code-block>
+    Spotify-Links werden über die Sonos-Integration als Share-Link abgespielt – Spotify muss
+    in der Sonos-App verknüpft sein. Die Spotify-Bibliothek erscheint, wenn die
+    Spotify-Integration in Home Assistant eingerichtet ist.
+  code: |
+    .sj-root {
+    --sj-bg: var(--bubble-main-background-color, var(--background-color-2, var(--secondary-background-color)));
+    --sj-btn: var(--bubble-sub-button-background-color, var(--bubble-secondary-background-color, var(--card-background-color, var(--ha-card-background, #fff))));
+    --sj-radius: var(--bubble-border-radius, 28px);
+    --sj-text: var(--primary-text-color);
+    --sj-text2: var(--secondary-text-color);
+    --sj-on-accent: var(--sj-accent-text, var(--primary-text-color));
+    --sj-track: color-mix(in srgb, var(--sj-text) 10%, transparent);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    color: var(--sj-text);
+    font-family: var(--bubble-font-family, inherit);
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+    -webkit-user-select: none;
+    }
+    .sj-root * { box-sizing: border-box; }
+    .sj-root [hidden] { display: none !important; }
+    .sj-root button {
+    border: none; margin: 0; padding: 0; font: inherit; color: inherit;
+    background: none; cursor: pointer; -webkit-appearance: none; appearance: none;
+    }
+    .sj-box {
+    background: var(--sj-bg);
+    border-radius: var(--sj-radius);
+    padding: 16px;
+    }
+    .sj-player { display: flex; flex-direction: column; gap: 14px; position: relative; overflow: hidden; }
+    .sj-player-bg {
+    position: absolute; inset: -40px; z-index: 0; pointer-events: none;
+    background-size: cover; background-position: center;
+    filter: blur(40px) saturate(1.3); opacity: .22; transition: opacity .6s ease;
+    }
+    .sj-player > :not(.sj-player-bg) { position: relative; z-index: 1; }
+    .sj-head { display: flex; flex-direction: column; align-items: center; gap: 14px; }
+    .sj-art {
+    position: relative; width: min(100%, var(--sj-art-size, 280px)); aspect-ratio: 1 / 1;
+    border-radius: calc(var(--sj-radius) * .75); overflow: hidden;
+    background: var(--sj-btn); display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 8px 24px rgba(0,0,0,.18);
+    }
+    .sj-art ha-icon { --mdc-icon-size: 56px; color: var(--sj-text2); opacity: .6; }
+    .sj-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .sj-meta { width: 100%; text-align: center; min-width: 0; }
+    .sj-room {
+    display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600;
+    color: var(--sj-text2); background: var(--sj-btn); border-radius: 999px; padding: 3px 10px 3px 8px;
+    margin-bottom: 8px; max-width: 100%;
+    }
+    .sj-room ha-icon { --mdc-icon-size: 14px; }
+    .sj-room span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sj-title { font-size: 17px; font-weight: 700; line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sj-sub { font-size: 13px; color: var(--sj-text2); margin-top: 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sj-compact .sj-head { flex-direction: row; align-items: center; }
+    .sj-compact .sj-art { width: 84px; min-width: 84px; border-radius: 18px; box-shadow: none; }
+    .sj-compact .sj-art ha-icon { --mdc-icon-size: 32px; }
+    .sj-compact .sj-meta { text-align: left; }
+    .sj-compact .sj-room { margin-bottom: 4px; }
+    .sj-progress { touch-action: pan-y; cursor: pointer; padding: 6px 0 0; }
+    .sj-progress.is-disabled { cursor: default; }
+    .sj-bar { position: relative; height: 6px; border-radius: 3px; background: var(--sj-track); }
+    .sj-bar-fill { position: absolute; left: 0; top: 0; bottom: 0; width: calc(var(--f, 0) * 100%); border-radius: 3px; background: var(--sj-accent); }
+    .sj-bar-knob {
+    position: absolute; top: 50%; left: calc(var(--f, 0) * 100%); width: 14px; height: 14px; border-radius: 50%;
+    background: var(--sj-accent); transform: translate(-50%, -50%) scale(0); transition: transform .15s ease;
+    }
+    .sj-progress:hover .sj-bar-knob, .sj-progress.is-dragging .sj-bar-knob { transform: translate(-50%, -50%) scale(1); }
+    .sj-times { display: flex; justify-content: space-between; font-size: 11px; color: var(--sj-text2); margin-top: 6px; font-variant-numeric: tabular-nums; }
+    .sj-live { align-self: center; font-size: 11px; font-weight: 700; letter-spacing: .08em; color: var(--sj-on-accent); background: var(--sj-accent); border-radius: 999px; padding: 2px 10px; }
+    .sj-controls { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 0 4px; width: 100%; max-width: 440px; align-self: center; }
+    .sj-btn {
+    position: relative; display: inline-flex; align-items: center; justify-content: center; flex: none;
+    width: 40px; height: 40px; border-radius: 50% !important; background: var(--sj-btn) !important;
+    transition: background-color .25s ease, transform .1s ease, opacity .25s ease;
+    }
+    .sj-btn ha-icon { --mdc-icon-size: 22px; pointer-events: none; }
+    .sj-btn:active { transform: scale(.92); }
+    .sj-btn.is-on { background: var(--sj-accent) !important; color: var(--sj-on-accent); }
+    .sj-btn.is-disabled, .sj-btn:disabled { opacity: .35; pointer-events: none; }
+    .sj-btn-l { width: 48px; height: 48px; }
+    .sj-btn-l ha-icon { --mdc-icon-size: 28px; }
+    .sj-btn-play { width: 64px; height: 64px; background: var(--sj-accent) !important; color: var(--sj-on-accent); }
+    .sj-btn-play ha-icon { --mdc-icon-size: 34px; }
+    .sj-btn-s { width: 32px; height: 32px; }
+    .sj-btn-s ha-icon { --mdc-icon-size: 18px; }
+    .sj-badge {
+    position: absolute; top: -4px; right: -6px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+    font-size: 10px; font-weight: 700; line-height: 18px; text-align: center; background: var(--sj-accent); color: var(--sj-on-accent);
+    }
+    .sj-volrow { display: flex; align-items: center; gap: 8px; }
+    .sj-slider {
+    position: relative; flex: 1; min-width: 0; height: 44px; border-radius: 22px; overflow: hidden;
+    background: var(--sj-btn); touch-action: pan-y; cursor: ew-resize;
+    }
+    .sj-slider-fill {
+    position: absolute; top: 0; bottom: 0; left: calc(var(--l, 0) * 100%); width: calc(var(--w, 0) * 100%);
+    background: color-mix(in srgb, var(--sj-accent) 80%, transparent);
+    transition: width .2s ease, left .2s ease;
+    }
+    .sj-slider.is-dragging .sj-slider-fill { transition: none; }
+    .sj-slider.is-center::after {
+    content: ''; position: absolute; left: 50%; top: 10px; bottom: 10px; width: 2px; margin-left: -1px;
+    background: var(--sj-track); border-radius: 1px;
+    }
+    .sj-slider-label {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 16px; font-size: 13px; font-weight: 600; pointer-events: none; gap: 8px;
+    }
+    .sj-slider-label span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sj-val { font-variant-numeric: tabular-nums; flex: none; }
+    .sj-sleep { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+    .sj-tabs {
+    display: flex; gap: 6px; padding: 6px; background: var(--sj-bg); border-radius: 999px;
+    }
+    .sj-tab {
+    flex: 1 1 0; min-width: 0; height: 42px; border-radius: 21px !important; display: inline-flex; align-items: center;
+    justify-content: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--sj-text2) !important;
+    transition: flex-grow .3s ease, background-color .3s ease, color .3s ease;
+    }
+    .sj-tab ha-icon { --mdc-icon-size: 21px; flex: none; }
+    .sj-tab span { display: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sj-tab.is-active { flex-grow: 2.4; background: var(--sj-accent) !important; color: var(--sj-on-accent) !important; }
+    .sj-tab.is-active span { display: inline; }
+    .sj-panel { display: flex; flex-direction: column; gap: 12px; }
+    .sj-h {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    font-size: 14px; font-weight: 700; padding: 0 4px; margin-top: 2px;
+    }
+    .sj-h small { font-size: 12px; font-weight: 500; color: var(--sj-text2); }
+    .sj-empty { font-size: 13px; color: var(--sj-text2); text-align: center; padding: 18px 12px; line-height: 1.45; }
+    .sj-loading { display: flex; justify-content: center; padding: 22px; }
+    .sj-spin {
+    width: 26px; height: 26px; border-radius: 50%; border: 3px solid var(--sj-track); border-top-color: var(--sj-accent);
+    animation: sj-spin .8s linear infinite;
+    }
+    @keyframes sj-spin { to { transform: rotate(360deg); } }
+    .sj-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .sj-chip {
+    height: 34px; padding: 0 14px !important; border-radius: 17px !important; background: var(--sj-btn) !important;
+    font-size: 13px; font-weight: 600; display: inline-flex; align-items: center; gap: 6px;
+    }
+    .sj-chip ha-icon { --mdc-icon-size: 18px; }
+    .sj-chip.is-on { background: var(--sj-accent) !important; color: var(--sj-on-accent); }
+    .sj-grid { display: grid; grid-template-columns: repeat(var(--sj-cols, 3), minmax(0, 1fr)); gap: 12px 10px; }
+    .sj-tile { display: flex; flex-direction: column; gap: 6px; cursor: pointer; min-width: 0; text-align: left; }
+    .sj-tile-art {
+    position: relative; aspect-ratio: 1 / 1; border-radius: 18px; overflow: hidden; background: var(--sj-bg);
+    display: flex; align-items: center; justify-content: center; transition: transform .15s ease, box-shadow .25s ease;
+    }
+    .sj-tile:active .sj-tile-art { transform: scale(.96); }
+    .sj-tile-art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+    .sj-tile-art > ha-icon { --mdc-icon-size: 34px; color: var(--sj-text2); opacity: .6; }
+    .sj-tile.is-active .sj-tile-art { box-shadow: 0 0 0 3px var(--sj-accent); }
+    .sj-tile-eq {
+    position: absolute; left: 6px; bottom: 6px; width: 26px; height: 26px; border-radius: 50%;
+    background: var(--sj-accent); color: var(--sj-on-accent); display: flex; align-items: center; justify-content: center;
+    }
+    .sj-tile-eq ha-icon { --mdc-icon-size: 16px; }
+    .sj-tile-name {
+    font-size: 12.5px; font-weight: 600; line-height: 1.25; padding: 0 2px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .sj-tile-actions { position: absolute; right: 6px; bottom: 6px; display: flex; gap: 4px; }
+    .sj-tile-actions .sj-btn { width: 28px; height: 28px; background: color-mix(in srgb, var(--sj-btn) 88%, transparent) !important; backdrop-filter: blur(6px); }
+    .sj-tile-actions .sj-btn ha-icon { --mdc-icon-size: 17px; }
+    .sj-link { display: flex; flex-direction: column; gap: 10px; }
+    .sj-input-wrap {
+    display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 6px 0 14px; border-radius: 22px; background: var(--sj-btn);
+    }
+    .sj-input-wrap ha-icon { --mdc-icon-size: 20px; color: var(--sj-text2); flex: none; }
+    .sj-input {
+    flex: 1; min-width: 0; height: 100%; border: none; outline: none; background: transparent; color: var(--sj-text);
+    font: inherit; font-size: 14px; user-select: text; -webkit-user-select: text;
+    }
+    .sj-input::placeholder { color: var(--sj-text2); opacity: .8; }
+    .sj-link-hint { font-size: 12px; color: var(--sj-text2); padding: 0 6px; min-height: 15px; }
+    .sj-link-hint.is-ok { color: var(--sj-text); }
+    .sj-link-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+    .sj-link-actions .sj-chip { flex: 1 1 0; min-width: 0; justify-content: center; white-space: nowrap; }
+    .sj-link-actions .sj-chip.is-primary { flex-basis: 100%; height: 40px; border-radius: 20px !important; }
+    .sj-filter { height: 40px; }
+    .sj-link-actions .sj-chip.is-primary { background: var(--sj-accent) !important; color: var(--sj-on-accent); }
+    .sj-link.is-invalid .sj-link-actions { opacity: .4; pointer-events: none; }
+    .sj-rooms-top { display: flex; gap: 6px; }
+    .sj-rooms-top .sj-chip { flex: 1; justify-content: center; }
+    .sj-room-row { display: flex; align-items: center; gap: 8px; }
+    .sj-room-row .sj-slider { height: 56px; border-radius: 28px; }
+    .sj-room-row .sj-slider.is-dim .sj-slider-fill { background: var(--sj-track); }
+    .sj-room-row.is-disabled { opacity: .45; }
+    .sj-room-row.is-disabled .sj-slider { pointer-events: none; }
+    .sj-join {
+    position: absolute; left: 8px; top: 8px; width: 40px; height: 40px; border-radius: 50% !important; z-index: 2;
+    display: flex; align-items: center; justify-content: center; background: var(--sj-btn) !important;
+    box-shadow: 0 0 0 1px var(--sj-track);
+    }
+    .sj-join ha-icon { --mdc-icon-size: 22px; pointer-events: none; }
+    .sj-join.is-on { background: var(--sj-accent) !important; color: var(--sj-on-accent); box-shadow: none; }
+    .sj-room-text { position: absolute; left: 58px; right: 64px; top: 0; bottom: 0; display: flex; flex-direction: column; justify-content: center; pointer-events: none; min-width: 0; }
+    .sj-room-name { font-size: 14px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sj-room-state { font-size: 12px; color: var(--sj-text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sj-room-pct { position: absolute; right: 16px; top: 0; bottom: 0; display: flex; align-items: center; font-size: 13px; font-weight: 700; pointer-events: none; font-variant-numeric: tabular-nums; }
+    .sj-eq { display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: 24px; background: var(--sj-bg); margin: -2px 0 4px; }
+    .sj-eq .sj-slider { flex: none; height: 40px; }
+    .sj-list { display: flex; flex-direction: column; gap: 4px; }
+    .sj-q-row {
+    display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 6px 6px 6px 12px; border-radius: 20px; cursor: pointer;
+    transition: background-color .2s ease;
+    }
+    .sj-q-row:active { background: var(--sj-bg); }
+    .sj-q-row.is-current { background: var(--sj-bg); }
+    .sj-q-idx { width: 26px; flex: none; text-align: center; font-size: 12px; color: var(--sj-text2); font-variant-numeric: tabular-nums; }
+    .sj-q-row.is-current .sj-q-idx { color: var(--sj-accent); }
+    .sj-q-idx ha-icon { --mdc-icon-size: 18px; }
+    .sj-q-text { flex: 1; min-width: 0; }
+    .sj-q-title { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sj-q-sub { font-size: 12px; color: var(--sj-text2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .sj-more { align-self: center; }
+    .sj-toast {
+    position: sticky; bottom: 12px; align-self: center; max-width: 92%; padding: 10px 16px; border-radius: 18px;
+    background: var(--sj-text); color: var(--card-background-color, #fff); font-size: 13px; font-weight: 600;
+    opacity: 0; transform: translateY(8px); transition: opacity .25s ease, transform .25s ease; pointer-events: none; z-index: 5;
+    margin-top: -40px;
+    }
+    .sj-toast.is-visible { opacity: .94; transform: none; }
+    .sj-root.is-unavailable .sj-controls, .sj-root.is-unavailable .sj-volrow, .sj-root.is-unavailable .sj-progress { opacity: .35; pointer-events: none; }
+    ${((this.config && this.config.sonos_jukebox) || {}).show_base_card ? '' : '.bubble-media-player-container, .bubble-sub-button-container { display: none !important; }'}
+    ${(() => {
+      /* Sonos Jukebox – Bubble Card module. Everything below runs inside the card. */
+      const VERSION = '1.0.0';
+      const MID = 'sonos_jukebox';
+      const ctx = this;
+      const H0 = ctx._hass;
+      if (!H0 || !entity || !ctx.content) return '';
+      const cfg = (ctx.config && ctx.config[MID]) || {};
+
+      if (ctx.__sj && ctx.__sj.version !== VERSION) { ctx.__sj.destroy(); ctx.__sj = null; }
+
+      if (!ctx.__sj) ctx.__sj = (function make() {
+        const S = { version: VERSION, H: H0, ent: entity, cfg: {}, tab: null, expanded: new Set(), sig: {}, drag: null, last: {}, qShowAll: false };
+        const G = window.__sjCache || (window.__sjCache = { fav: {}, lib: {}, oe: null, signed: {}, oeFailed: false });
+        const TTL = 10 * 60 * 1000;
+        const F = { SEEK: 2, VOLUME_SET: 4, VOLUME_MUTE: 8, PREV: 16, NEXT: 32, SHUFFLE: 32768, REPEAT: 262144 };
+        const TABS = {
+          favorites: { icon: 'mdi:star', label: 'Favoriten' },
+          jukebox: { icon: 'mdi:playlist-music', label: 'Jukebox' },
+          rooms: { icon: 'mdi:speaker-multiple', label: 'Räume' },
+          queue: { icon: 'mdi:format-list-numbered', label: 'Warteschlange' },
+        };
+        const EQ_KEYS = {
+          bass: { label: 'Bass', kind: 'num' },
+          treble: { label: 'Höhen', kind: 'num' },
+          balance: { label: 'Balance', kind: 'num' },
+          loudness: { label: 'Loudness', kind: 'sw' },
+          cross_fade: { label: 'Überblenden', kind: 'sw' },
+          night_mode: { label: 'Nachtmodus', kind: 'sw' },
+          speech_enhancement: { label: 'Sprache', kind: 'sw' },
+        };
+        const SP_RE = /(?:open\.spotify\.com\/(?:intl-[a-z]{2}(?:-[a-z]{2})?\/)?|spotify:)(album|playlist|track|episode|show)[:\/]([A-Za-z0-9]{10,})/i;
+
+        const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+        const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+        const icon = (i) => '<ha-icon icon="' + i + '"></ha-icon>';
+        const fmt = (s) => {
+          s = Math.max(0, Math.floor(s || 0));
+          const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), x = String(s % 60).padStart(2, '0');
+          return h ? h + ':' + String(m).padStart(2, '0') + ':' + x : m + ':' + x;
+        };
+        const st = (id) => (id && S.H.states[id]) || null;
+        const attrs = (id) => (st(id) && st(id).attributes) || {};
+        const supports = (id, f) => ((attrs(id).supported_features || 0) & f) === f;
+        const ls = {
+          get: (k, d) => { try { const v = window.localStorage.getItem(k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+          set: (k, v) => { try { window.localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* ignore */ } },
+        };
+        const hassUrl = (u) => (u && u.charAt(0) === '/' && S.H.hassUrl ? S.H.hassUrl(u) : u);
+        const shortName = (id) => {
+          let n = attrs(id).friendly_name || id.split('.')[1];
+          if (S.cfg.strip_sonos !== false) n = n.replace(/\s*sonos\s*/ig, ' ').trim() || n;
+          return n;
+        };
+
+        /* ---------- service helpers ---------- */
+        const toast = (msg) => {
+          const t = S.els.toast;
+          t.textContent = msg;
+          t.classList.add('is-visible');
+          clearTimeout(S.toastT);
+          S.toastT = setTimeout(() => t.classList.remove('is-visible'), 2800);
+        };
+        const call = (domain, service, data, target) =>
+          S.H.callService(domain, service, data || {}, target).catch((err) => {
+            toast('Fehler: ' + ((err && (err.message || err.code)) || err));
+            throw err;
+          });
+        const mp = (service, data, id) => call('media_player', service, data, { entity_id: id || S.ent });
+        const browse = (id, type) => {
+          const msg = { type: 'media_player/browse_media', entity_id: S.ent };
+          if (id != null) { msg.media_content_id = id; msg.media_content_type = type; }
+          return S.H.callWS(msg);
+        };
+        const retry = async (fn, n) => {
+          for (let i = 0; ; i++) {
+            try { return await fn(); } catch (e) { if (i >= (n || 1)) throw e; await new Promise((r) => setTimeout(r, 700)); }
+          }
+        };
+
+        /* ---------- model ---------- */
+        const coordinator = () => {
+          const gm = attrs(S.ent).group_members;
+          return (Array.isArray(gm) && gm.length && gm[0]) || S.ent;
+        };
+        const members = () => {
+          const gm = attrs(coordinator()).group_members;
+          return Array.isArray(gm) && gm.length ? gm : [S.ent];
+        };
+        const speakers = () => {
+          let list = Array.isArray(S.cfg.speakers) && S.cfg.speakers.length ? S.cfg.speakers.slice() : null;
+          if (!list) {
+            list = Object.values(S.H.entities || {})
+              .filter((e) => e.platform === 'sonos' && e.entity_id.indexOf('media_player.') === 0 && !e.hidden)
+              .map((e) => e.entity_id);
+          }
+          if (list.indexOf(S.ent) === -1) list.unshift(S.ent);
+          const mem = members();
+          const rank = (id) => (id === S.ent ? 0 : mem.indexOf(id) !== -1 ? 1 : st(id) && st(id).state !== 'unavailable' ? 2 : 3);
+          return list.filter((id) => st(id)).sort((a, b) => rank(a) - rank(b) || shortName(a).localeCompare(shortName(b)));
+        };
+        const eqFor = (id) => {
+          S.eqCache = S.eqCache && S.eqCache.src === S.H.entities ? S.eqCache : { src: S.H.entities, map: {} };
+          if (S.eqCache.map[id]) return S.eqCache.map[id];
+          const reg = S.H.entities && S.H.entities[id];
+          const out = [];
+          if (reg && reg.device_id) {
+            Object.values(S.H.entities).forEach((e) => {
+              if (e.device_id === reg.device_id && EQ_KEYS[e.translation_key] && !e.hidden) out.push({ id: e.entity_id, key: e.translation_key, ...EQ_KEYS[e.translation_key] });
+            });
+          }
+          const order = Object.keys(EQ_KEYS);
+          out.sort((a, b) => order.indexOf(a.key) - order.indexOf(b.key));
+          return (S.eqCache.map[id] = out);
+        };
+        S.trackedIds = (H, ent, cfg) => {
+          S.H = H; S.ent = ent; S.cfg = cfg;
+          const ids = [ent, coordinator()].concat(speakers());
+          if (cfg.show_eq !== false && S.expanded.size) S.expanded.forEach((id) => eqFor(id).forEach((e) => ids.push(e.id)));
+          return ids;
+        };
+
+        /* ---------- DOM ---------- */
+        const root = document.createElement('div');
+        root.className = 'sj-root';
+        root.innerHTML = `
+          <div class="sj-box sj-player">
+            <div class="sj-player-bg"></div>
+            <div class="sj-head">
+              <div class="sj-art">${icon('mdi:music')}<img alt="" hidden></div>
+              <div class="sj-meta">
+                <div class="sj-room">${icon('mdi:speaker')}<span></span></div>
+                <div class="sj-title"></div>
+                <div class="sj-sub"></div>
+              </div>
+            </div>
+            <div class="sj-progress" data-drag="seek">
+              <div class="sj-bar"><div class="sj-bar-fill"></div><div class="sj-bar-knob"></div></div>
+              <div class="sj-times"><span class="sj-t-pos">0:00</span><span class="sj-t-dur">0:00</span></div>
+            </div>
+            <div class="sj-live" hidden>LIVE</div>
+            <div class="sj-controls">
+              <button class="sj-btn" data-act="shuffle" title="Zufallswiedergabe">${icon('mdi:shuffle-variant')}</button>
+              <button class="sj-btn sj-btn-l" data-act="prev" title="Zurück">${icon('mdi:skip-previous')}</button>
+              <button class="sj-btn sj-btn-play" data-act="playpause" title="Wiedergabe">${icon('mdi:play')}</button>
+              <button class="sj-btn sj-btn-l" data-act="next" title="Weiter">${icon('mdi:skip-next')}</button>
+              <button class="sj-btn" data-act="repeat" title="Wiederholen">${icon('mdi:repeat-off')}</button>
+            </div>
+            <div class="sj-volrow">
+              <button class="sj-btn" data-act="mute-group" title="Stumm">${icon('mdi:volume-high')}</button>
+              <div class="sj-slider" data-drag="groupvol">
+                <div class="sj-slider-fill"></div>
+                <div class="sj-slider-label"><span class="sj-vol-name">Lautstärke</span><span class="sj-val sj-vol-val"></span></div>
+              </div>
+              <button class="sj-btn" data-act="sleep" title="Sleep-Timer">${icon('mdi:timer-outline')}<span class="sj-badge" hidden></span></button>
+            </div>
+            <div class="sj-sleep sj-chips" hidden></div>
+          </div>
+          <div class="sj-tabs"></div>
+          <div class="sj-panels">
+            <div class="sj-panel" data-panel="favorites"></div>
+            <div class="sj-panel" data-panel="jukebox"></div>
+            <div class="sj-panel" data-panel="rooms"></div>
+            <div class="sj-panel" data-panel="queue"></div>
+          </div>
+          <div class="sj-toast"></div>`;
+        const $ = (s) => root.querySelector(s);
+        S.els = {
+          player: $('.sj-player'), bg: $('.sj-player-bg'), art: $('.sj-art img'), room: $('.sj-room span'), title: $('.sj-title'), sub: $('.sj-sub'),
+          prog: $('.sj-progress'), live: $('.sj-live'), pos: $('.sj-t-pos'), dur: $('.sj-t-dur'),
+          play: $('[data-act="playpause"] ha-icon'), shuffle: $('[data-act="shuffle"]'), repeat: $('[data-act="repeat"]'),
+          prev: $('[data-act="prev"]'), next: $('[data-act="next"]'), mute: $('[data-act="mute-group"]'),
+          vol: $('[data-drag="groupvol"]'), volName: $('.sj-vol-name'), volVal: $('.sj-vol-val'),
+          sleepBtn: $('[data-act="sleep"]'), sleepBadge: $('.sj-badge'), sleepMenu: $('.sj-sleep'),
+          tabs: $('.sj-tabs'), toast: $('.sj-toast'),
+          panels: { favorites: $('[data-panel="favorites"]'), jukebox: $('[data-panel="jukebox"]'), rooms: $('[data-panel="rooms"]'), queue: $('[data-panel="queue"]') },
+        };
+        S.root = root;
+
+        const setText = (el, v) => { if (el.textContent !== v) el.textContent = v; };
+        const setIcon = (el, i) => { if (el.getAttribute('icon') !== i) el.setAttribute('icon', i); };
+        const toggle = (el, cls, on) => { if (el.classList.contains(cls) !== !!on) el.classList.toggle(cls, !!on); };
+        const setFill = (el, frac, center) => {
+          frac = clamp(frac, 0, 1);
+          if (center) { el.style.setProperty('--l', Math.min(frac, 0.5)); el.style.setProperty('--w', Math.abs(frac - 0.5)); }
+          else { el.style.setProperty('--l', 0); el.style.setProperty('--w', frac); }
+          el.style.setProperty('--f', frac);
+        };
+        const signImages = (scope) => {
+          scope.querySelectorAll('img[data-sign]').forEach((img) => {
+            const p = img.getAttribute('data-sign');
+            img.removeAttribute('data-sign');
+            const put = (u) => { img.src = hassUrl(u); };
+            if (G.signed[p]) return put(G.signed[p]);
+            S.H.callWS({ type: 'auth/sign_path', path: p, expires: 86400 }).then((r) => { G.signed[p] = r.path; put(r.path); }).catch(() => {});
+          });
+        };
+        const imgTag = (u) => {
+          if (!u) return '';
+          if (u.indexOf('/api/') === 0 && u.indexOf('authSig') === -1) return '<img alt="" loading="lazy" data-sign="' + esc(u) + '">';
+          return '<img alt="" loading="lazy" src="' + esc(hassUrl(u)) + '" onerror="this.remove()">';
+        };
+
+        /* ---------- player ---------- */
+        const progressNow = () => {
+          const a = attrs(coordinator());
+          const dur = Number(a.media_duration) || 0;
+          let pos = Number(a.media_position) || 0;
+          if (st(coordinator()) && st(coordinator()).state === 'playing' && a.media_position_updated_at) {
+            pos += (Date.now() - Date.parse(a.media_position_updated_at)) / 1000;
+          }
+          return { dur, pos: Math.min(pos, dur || pos) };
+        };
+        const renderProgress = () => {
+          if (S.drag && S.drag.kind === 'seek' && S.drag.active) return;
+          const { dur, pos } = progressNow();
+          const has = dur > 0;
+          S.els.prog.hidden = !has;
+          S.els.live.hidden = has || !(st(S.ent) && st(S.ent).state === 'playing');
+          if (!has) return;
+          setFill(S.els.prog, pos / dur);
+          setText(S.els.pos, fmt(pos));
+          setText(S.els.dur, '-' + fmt(dur - pos));
+          toggle(S.els.prog, 'is-disabled', !supports(S.ent, F.SEEK));
+        };
+        const sleepKey = () => 'sj-sleep-' + coordinator();
+        const renderSleep = () => {
+          const end = ls.get(sleepKey(), 0);
+          const left = end - Date.now();
+          const on = left > 0;
+          toggle(S.els.sleepBtn, 'is-on', on);
+          S.els.sleepBadge.hidden = !on;
+          if (on) setText(S.els.sleepBadge, String(Math.ceil(left / 60000)));
+          setIcon(S.els.sleepBtn.querySelector('ha-icon'), on ? 'mdi:timer-sand' : 'mdi:timer-outline');
+        };
+        const groupVolume = () => {
+          const m = members().filter((id) => st(id) && st(id).state !== 'unavailable');
+          if (!m.length) return { v: 0, muted: false, m };
+          const v = m.reduce((s, id) => s + (Number(attrs(id).volume_level) || 0), 0) / m.length;
+          const muted = m.every((id) => attrs(id).is_volume_muted);
+          return { v, muted, m };
+        };
+        const renderPlayer = () => {
+          const s = st(S.ent);
+          const a = attrs(S.ent);
+          const state = s ? s.state : 'unavailable';
+          toggle(root, 'is-unavailable', state === 'unavailable');
+          const mem = members();
+          setText(S.els.room, shortName(S.ent) + (mem.length > 1 ? ' + ' + (mem.length - 1) : ''));
+          const idle = ['off', 'idle', 'standby', 'unavailable', 'unknown'].indexOf(state) !== -1 && !a.media_title;
+          setText(S.els.title, state === 'unavailable' ? 'Nicht verfügbar' : a.media_title || (idle ? 'Nichts in der Wiedergabe' : a.media_channel || a.source || '–'));
+          setText(S.els.sub, [a.media_artist, a.media_album_name].filter(Boolean).join(' · ') || (a.media_title ? a.media_channel || a.source || '' : ''));
+
+          const pic = a.entity_picture_local || a.entity_picture || '';
+          const picBase = pic.split('?')[0] + '|' + (a.media_title || '') + '|' + (a.media_content_id || '');
+          if (S.last.picBase !== picBase) {
+            S.last.picBase = picBase;
+            if (pic && S.cfg.show_cover !== false) {
+              const url = hassUrl(pic);
+              S.els.art.onload = () => { S.els.art.hidden = false; };
+              S.els.art.onerror = () => { S.els.art.hidden = true; };
+              S.els.art.src = url;
+              S.els.bg.style.backgroundImage = S.cfg.cover_glow === false ? 'none' : 'url("' + url.replace(/"/g, '%22') + '")';
+            } else {
+              S.els.art.hidden = true;
+              S.els.art.removeAttribute('src');
+              S.els.bg.style.backgroundImage = 'none';
+            }
+          }
+          setIcon(S.els.play, state === 'playing' ? 'mdi:pause' : 'mdi:play');
+          toggle(S.els.shuffle, 'is-on', !!a.shuffle);
+          toggle(S.els.shuffle, 'is-disabled', !supports(S.ent, F.SHUFFLE));
+          const rep = a.repeat || 'off';
+          setIcon(S.els.repeat.querySelector('ha-icon'), rep === 'one' ? 'mdi:repeat-once' : rep === 'all' ? 'mdi:repeat' : 'mdi:repeat-off');
+          toggle(S.els.repeat, 'is-on', rep !== 'off');
+          toggle(S.els.repeat, 'is-disabled', !supports(S.ent, F.REPEAT));
+          toggle(S.els.prev, 'is-disabled', !supports(S.ent, F.PREV));
+          toggle(S.els.next, 'is-disabled', !supports(S.ent, F.NEXT));
+
+          const gv = groupVolume();
+          setText(S.els.volName, gv.m.length > 1 ? 'Gruppe · ' + gv.m.length + ' Räume' : 'Lautstärke');
+          if (!(S.drag && S.drag.kind === 'groupvol' && S.drag.active)) {
+            setFill(S.els.vol, gv.v);
+            setText(S.els.volVal, Math.round(gv.v * 100) + ' %');
+          }
+          setIcon(S.els.mute.querySelector('ha-icon'), gv.muted ? 'mdi:volume-off' : gv.v < 0.34 ? 'mdi:volume-low' : gv.v < 0.67 ? 'mdi:volume-medium' : 'mdi:volume-high');
+          toggle(S.els.mute, 'is-on', gv.muted);
+          renderProgress();
+          renderSleep();
+        };
+
+        /* ---------- tabs ---------- */
+        const tabList = () => {
+          const t = Array.isArray(S.cfg.tabs) && S.cfg.tabs.length ? S.cfg.tabs : Object.keys(TABS);
+          return t.filter((k) => TABS[k]);
+        };
+        const renderTabs = () => {
+          const list = tabList();
+          const key = list.join(',') + '|' + S.tab;
+          if (S.sig.tabs === key) return;
+          S.sig.tabs = key;
+          S.els.tabs.hidden = list.length < 2;
+          S.els.tabs.innerHTML = list.map((k) => '<button class="sj-tab' + (k === S.tab ? ' is-active' : '') + '" data-act="tab" data-tab="' + k + '">' + icon(TABS[k].icon) + '<span>' + TABS[k].label + '</span></button>').join('');
+          Object.keys(S.els.panels).forEach((k) => { S.els.panels[k].hidden = k !== S.tab; });
+        };
+        const setTab = (t) => {
+          S.tab = t;
+          ls.set('sj-tab-' + S.ent, t);
+          renderTabs();
+          renderPanel(true);
+        };
+
+        /* ---------- favorites ---------- */
+        const loadFavorites = async (force) => {
+          const key = S.ent;
+          const c = G.fav[key];
+          if (!force && c && (c.loading || Date.now() - c.t < TTL)) return;
+          G.fav[key] = { loading: true, t: 0, items: c ? c.items : null };
+          renderPanel(true);
+          try {
+            const rootFav = await retry(() => browse('', 'favorites'));
+            const items = [];
+            for (const ch of rootFav.children || []) {
+              if (ch.can_play) { items.push({ ...ch, folder: '' }); continue; }
+              if (!ch.can_expand) continue;
+              const sub = await retry(() => browse(ch.media_content_id, ch.media_content_type));
+              (sub.children || []).forEach((x) => { if (x.can_play) items.push({ ...x, folder: ch.title }); });
+            }
+            G.fav[key] = { t: Date.now(), items };
+          } catch (e) {
+            G.fav[key] = { t: Date.now(), items: null, error: (e && e.message) || 'Fehler' };
+          }
+          S.sig.favorites = null;
+          renderPanel(true);
+        };
+        const renderFavorites = (force) => {
+          const panel = S.els.panels.favorites;
+          const c = G.fav[S.ent];
+          if (!c || (!c.loading && Date.now() - c.t > TTL)) { loadFavorites(); return; }
+          const a = attrs(S.ent);
+          const active = a.source || a.media_channel || '';
+          const key = (c.loading ? 'L' : 'D') + (c.items ? c.items.length : 'x') + '|' + active + '|' + S.cfg.favorite_columns;
+          if (!force && S.sig.favorites === key) return;
+          S.sig.favorites = key;
+          if (c.loading && !c.items) { panel.innerHTML = '<div class="sj-loading"><div class="sj-spin"></div></div>'; return; }
+          if (!c.items) {
+            const src = a.source_list || [];
+            S.favs = src.map((t) => ({ title: t, source: true }));
+            panel.innerHTML = '<div class="sj-empty">Favoriten konnten nicht geladen werden.<br>' + esc(c.error || '') + '</div>'
+              + (src.length ? '<div class="sj-chips">' + src.map((t, i) => '<button class="sj-chip' + (t === active ? ' is-on' : '') + '" data-act="fav" data-i="' + i + '">' + esc(t) + '</button>').join('') + '</div>' : '')
+              + '<button class="sj-chip sj-more" data-act="fav-reload">' + icon('mdi:refresh') + 'Erneut laden</button>';
+            return;
+          }
+          S.favs = c.items;
+          if (!c.items.length) { panel.innerHTML = '<div class="sj-empty">Keine Sonos-Favoriten gefunden. Favoriten legst du in der Sonos-App an.</div>'; return; }
+          const groups = [];
+          c.items.forEach((it, i) => {
+            let g = groups.find((x) => x.name === it.folder);
+            if (!g) groups.push((g = { name: it.folder, items: [] }));
+            g.items.push(i);
+          });
+          const cols = clamp(Number(S.cfg.favorite_columns) || 3, 2, 5);
+          panel.innerHTML = groups.map((g) =>
+            (groups.length > 1 && g.name ? '<div class="sj-h">' + esc(g.name) + '<small>' + g.items.length + '</small></div>' : '')
+            + '<div class="sj-grid" style="--sj-cols:' + cols + '">' + g.items.map((i) => {
+              const it = c.items[i];
+              const on = active && it.title === active;
+              return '<div class="sj-tile' + (on ? ' is-active' : '') + '" data-act="fav" data-i="' + i + '" role="button">'
+                + '<div class="sj-tile-art">' + icon(it.folder && /radio/i.test(it.folder) ? 'mdi:radio' : 'mdi:star') + imgTag(it.thumbnail)
+                + (on ? '<div class="sj-tile-eq">' + icon(st(S.ent) && st(S.ent).state === 'playing' ? 'mdi:volume-high' : 'mdi:pause') + '</div>' : '') + '</div>'
+                + '<div class="sj-tile-name">' + esc(it.title) + '</div></div>';
+            }).join('') + '</div>').join('');
+          signImages(panel);
+        };
+
+        /* ---------- jukebox ---------- */
+        const parseLink = (s) => {
+          const m = SP_RE.exec(String(s || '').trim());
+          return m ? { type: m[1].toLowerCase(), id: m[2], url: 'https://open.spotify.com/' + m[1].toLowerCase() + '/' + m[2] } : null;
+        };
+        const TYPE_DE = { playlist: 'Playlist', album: 'Album', track: 'Titel', episode: 'Folge', show: 'Podcast' };
+        const oembed = (url) => {
+          if (!G.oe) G.oe = ls.get('sj-oembed-v1', {});
+          if (G.oe[url] || G.oeFailed) return Promise.resolve(G.oe[url] || null);
+          G.oePending = G.oePending || {};
+          if (G.oePending[url]) return G.oePending[url];
+          return (G.oePending[url] = fetch('https://open.spotify.com/oembed?url=' + encodeURIComponent(url))
+            .then((r) => (r.ok ? r.json() : null))
+            .then((j) => {
+              if (j) { G.oe[url] = { title: j.title || '', img: j.thumbnail_url || '' }; ls.set('sj-oembed-v1', G.oe); }
+              return G.oe[url] || null;
+            })
+            .catch(() => { G.oeFailed = true; return null; }));
+        };
+        const playLink = async (url, mode, title) => {
+          const shuffle = S.cfg.shuffle_on_play === true && (mode === 'replace');
+          await mp('play_media', { media_content_id: url, media_content_type: 'playlist', enqueue: mode, extra: title ? { title } : undefined });
+          if (shuffle) await mp('shuffle_set', { shuffle: true });
+          toast(mode === 'replace' ? 'Wird abgespielt' : mode === 'next' ? 'Kommt als Nächstes' : 'Zur Warteschlange hinzugefügt');
+          S.sig.queue = null;
+        };
+        const playItem = async (it, mode) => {
+          await mp('play_media', { media_content_id: it.media_content_id, media_content_type: it.media_content_type, enqueue: mode });
+          if (S.cfg.shuffle_on_play === true && mode === 'replace') await mp('shuffle_set', { shuffle: true });
+          toast(mode === 'replace' ? 'Wird abgespielt' : mode === 'next' ? 'Kommt als Nächstes' : 'Zur Warteschlange hinzugefügt');
+          S.sig.queue = null;
+        };
+        const loadLibrary = async (force) => {
+          const key = S.ent;
+          const c = G.lib[key];
+          if (!force && c && (c.loading || Date.now() - c.t < TTL)) return;
+          G.lib[key] = { loading: true, t: 0, items: c ? c.items : null };
+          renderJukeboxLib();
+          try {
+            const r = await retry(() => browse());
+            const node = (r.children || []).find((x) => String(x.media_content_type).indexOf('spotify://library') === 0);
+            if (!node) throw new Error('Keine Spotify-Integration im Sonos-Medienbrowser gefunden');
+            const lib = await retry(() => browse(node.media_content_id, node.media_content_type), 2);
+            const pl = (lib.children || []).find((x) => /current_user_playlists$/.test(x.media_content_type));
+            if (!pl) throw new Error('Playlists nicht gefunden');
+            const list = await retry(() => browse(pl.media_content_id, pl.media_content_type), 2);
+            G.lib[key] = { t: Date.now(), items: (list.children || []).filter((x) => x.can_play) };
+          } catch (e) {
+            G.lib[key] = { t: Date.now(), items: null, error: (e && (e.message || e.code)) || 'Fehler' };
+          }
+          renderJukeboxLib();
+        };
+        const tileHtml = (art, fallbackIcon, name, act, i) =>
+          '<div class="sj-tile" data-act="' + act + '" data-i="' + i + '" data-mode="replace" data-name="' + esc(String(name || '').toLowerCase()) + '" role="button">'
+          + '<div class="sj-tile-art">' + icon(fallbackIcon) + art
+          + '<div class="sj-tile-actions">'
+          + '<button class="sj-btn" data-act="' + act + '" data-i="' + i + '" data-mode="next" title="Als Nächstes">' + icon('mdi:playlist-play') + '</button>'
+          + '<button class="sj-btn" data-act="' + act + '" data-i="' + i + '" data-mode="add" title="Anhängen">' + icon('mdi:playlist-plus') + '</button>'
+          + '</div></div><div class="sj-tile-name">' + esc(name) + '</div></div>';
+        const renderJukeboxLib = () => {
+          const box = S.els.jbLib;
+          if (!box) return;
+          if (S.cfg.show_spotify_library === false) { box.innerHTML = ''; return; }
+          const c = G.lib[S.ent];
+          const head = '<div class="sj-h">Spotify-Playlists<button class="sj-btn sj-btn-s" data-act="lib-reload" title="Neu laden">' + icon('mdi:refresh') + '</button></div>';
+          if (!c) { box.innerHTML = head + '<button class="sj-chip sj-more" data-act="lib-reload">' + icon('mdi:spotify') + 'Bibliothek laden</button>'; return; }
+          if (c.loading && !c.items) { box.innerHTML = head + '<div class="sj-loading"><div class="sj-spin"></div></div>'; return; }
+          if (!c.items) { box.innerHTML = head + '<div class="sj-empty">Spotify-Bibliothek gerade nicht erreichbar.<br>' + esc(c.error) + '</div><button class="sj-chip sj-more" data-act="lib-reload">' + icon('mdi:refresh') + 'Erneut versuchen</button>'; return; }
+          S.lib = c.items;
+          const cols = clamp(Number(S.cfg.library_columns) || 3, 2, 5);
+          const filt = c.items.length > 12 ? '<div class="sj-input-wrap sj-filter">' + icon('mdi:magnify') + '<input class="sj-input sj-lib-q" type="search" autocomplete="off" placeholder="Playlists durchsuchen …"></div>' : '';
+          box.innerHTML = head + filt + (c.items.length
+            ? '<div class="sj-grid" style="--sj-cols:' + cols + '">' + c.items.map((it, i) => tileHtml(imgTag(it.thumbnail), 'mdi:playlist-music', it.title, 'lib', i)).join('') + '</div>'
+            : '<div class="sj-empty">Keine Playlists gefunden.</div>');
+          signImages(box);
+          const q = box.querySelector('.sj-lib-q');
+          if (q) {
+            const apply = () => {
+              const v = q.value.trim().toLowerCase();
+              S.libQ = q.value;
+              box.querySelectorAll('.sj-tile').forEach((t) => { t.hidden = !!v && t.dataset.name.indexOf(v) === -1; });
+            };
+            q.value = S.libQ || '';
+            q.addEventListener('input', apply);
+            apply();
+          }
+        };
+        const renderJukeboxOwn = () => {
+          const box = S.els.jbOwn;
+          if (!box) return;
+          const list = (Array.isArray(S.cfg.playlists) ? S.cfg.playlists : []).map((p) => ({ ...p, link: parseLink(p.uri || p.url) })).filter((p) => p.link);
+          S.jb = list;
+          if (!list.length) { box.innerHTML = ''; return; }
+          const cols = clamp(Number(S.cfg.jukebox_columns) || 2, 1, 4);
+          box.innerHTML = '<div class="sj-h">' + esc(S.cfg.jukebox_title || 'Deine Jukebox') + '<small>' + list.length + '</small></div>'
+            + '<div class="sj-grid" style="--sj-cols:' + cols + '">' + list.map((p, i) => {
+              const meta = (G.oe || {})[p.link.url];
+              const img = p.image || (meta && meta.img) || '';
+              const name = p.name || (meta && meta.title) || TYPE_DE[p.link.type];
+              return tileHtml(imgTag(img), p.icon || 'mdi:playlist-music', name, 'jb', i);
+            }).join('') + '</div>';
+          signImages(box);
+          let pending = 0;
+          list.forEach((p) => {
+            if ((!p.image || !p.name) && !(G.oe || {})[p.link.url] && !G.oeFailed) {
+              pending++;
+              oembed(p.link.url).then(() => { if (--pending === 0) renderJukeboxOwn(); });
+            }
+          });
+        };
+        const buildJukebox = () => {
+          const panel = S.els.panels.jukebox;
+          const showLink = S.cfg.show_link_input !== false;
+          panel.innerHTML = (showLink ? `
+            <div class="sj-box sj-link is-invalid">
+              <div class="sj-input-wrap">${icon('mdi:spotify')}<input class="sj-input" type="url" inputmode="url" autocomplete="off" placeholder="Spotify-Link einfügen …"><button class="sj-btn sj-btn-s" data-act="link-paste" title="Aus Zwischenablage">${icon('mdi:content-paste')}</button></div>
+              <div class="sj-link-hint">Playlist, Album oder Titel aus Spotify teilen → „Link kopieren“</div>
+              <div class="sj-link-actions">
+                <button class="sj-chip is-primary" data-act="link" data-mode="replace">${icon('mdi:play')}Abspielen</button>
+                <button class="sj-chip" data-act="link" data-mode="next">${icon('mdi:playlist-play')}Als Nächstes</button>
+                <button class="sj-chip" data-act="link" data-mode="add">${icon('mdi:playlist-plus')}Anhängen</button>
+              </div>
+            </div>` : '') + '<div class="sj-jb-own sj-panel"></div><div class="sj-jb-lib sj-panel"></div>';
+          S.els.jbOwn = panel.querySelector('.sj-jb-own');
+          S.els.jbLib = panel.querySelector('.sj-jb-lib');
+          S.els.linkBox = panel.querySelector('.sj-link');
+          S.els.input = panel.querySelector('.sj-input');
+          if (S.els.input) {
+            const onInput = () => {
+              const l = parseLink(S.els.input.value);
+              toggle(S.els.linkBox, 'is-invalid', !l);
+              const hint = S.els.linkBox.querySelector('.sj-link-hint');
+              toggle(hint, 'is-ok', !!l);
+              if (!S.els.input.value) hint.textContent = 'Playlist, Album oder Titel aus Spotify teilen → „Link kopieren“';
+              else if (!l) hint.textContent = 'Das ist kein gültiger Spotify-Link';
+              else {
+                hint.textContent = TYPE_DE[l.type] + ' erkannt';
+                oembed(l.url).then((m) => { if (m && parseLink(S.els.input.value) && parseLink(S.els.input.value).url === l.url) hint.textContent = TYPE_DE[l.type] + ': ' + m.title; });
+              }
+            };
+            S.els.input.addEventListener('input', onInput);
+            S.els.input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); doLink('replace'); } });
+            S.onLinkInput = onInput;
+          }
+          renderJukeboxOwn();
+          if (S.cfg.show_spotify_library !== false) {
+            if (S.cfg.autoload_library !== false && !G.lib[S.ent]) loadLibrary();
+            else renderJukeboxLib();
+          } else S.els.jbLib.innerHTML = '';
+        };
+        const doLink = async (mode) => {
+          const l = parseLink(S.els.input && S.els.input.value);
+          if (!l) return toast('Bitte einen Spotify-Link einfügen');
+          const meta = (G.oe || {})[l.url];
+          try {
+            await playLink(l.url, mode, meta && meta.title);
+            S.els.input.value = '';
+            S.onLinkInput && S.onLinkInput();
+          } catch (e) { /* toast already shown */ }
+        };
+
+        /* ---------- rooms ---------- */
+        const renderRooms = (force) => {
+          const panel = S.els.panels.rooms;
+          if (S.drag && S.drag.active && panel.contains(S.drag.el)) { S.roomsDirty = true; return; }
+          const list = speakers();
+          const mem = members();
+          const coord = coordinator();
+          const showEq = S.cfg.show_eq !== false;
+          const parts = list.map((id) => {
+            const a = attrs(id);
+            const eqs = showEq && S.expanded.has(id) ? eqFor(id).map((e) => e.id + '=' + (st(e.id) && st(e.id).state)).join(',') : '';
+            return id + ':' + (st(id) && st(id).state) + ':' + a.volume_level + ':' + a.is_volume_muted + ':' + (a.group_members || []).join('+') + ':' + eqs;
+          });
+          const key = parts.join('|') + '|' + mem.join(',') + '|' + Array.from(S.expanded).join(',') + '|' + showEq;
+          if (!force && S.sig.rooms === key) return;
+          S.sig.rooms = key;
+          S.roomsDirty = false;
+          const avail = list.filter((id) => st(id).state !== 'unavailable');
+          const others = avail.filter((id) => mem.indexOf(id) === -1);
+          let html = '<div class="sj-rooms-top">'
+            + '<button class="sj-chip' + (others.length ? '' : ' is-on') + '" data-act="join-all">' + icon('mdi:speaker-multiple') + 'Alle Räume</button>'
+            + '<button class="sj-chip' + (mem.length > 1 ? '' : ' is-on') + '" data-act="solo">' + icon('mdi:speaker') + 'Nur ' + esc(shortName(S.ent)) + '</button></div>';
+          list.forEach((id) => {
+            const s = st(id);
+            const a = s.attributes;
+            const un = s.state === 'unavailable';
+            const inG = mem.indexOf(id) !== -1;
+            const v = Number(a.volume_level) || 0;
+            const ownGroup = Array.isArray(a.group_members) && a.group_members.length > 1 && !inG;
+            const stateTxt = un ? 'Nicht erreichbar'
+              : inG ? (id === coord && mem.length > 1 ? 'Gruppenleitung' : mem.length > 1 ? 'In der Gruppe' : 'Dieser Raum') + (a.is_volume_muted ? ' · stumm' : '')
+              : s.state === 'playing' ? (ownGroup ? 'Andere Gruppe · spielt' : 'Spielt etwas anderes') : 'Nicht verbunden';
+            const eqs = showEq ? eqFor(id) : [];
+            const exp = S.expanded.has(id) && eqs.length;
+            html += '<div class="sj-room-row' + (un ? ' is-disabled' : '') + (inG ? ' is-member' : '') + '">'
+              + '<div class="sj-slider' + (inG ? '' : ' is-dim') + '" data-drag="vol" data-id="' + id + '" style="--l:0;--w:' + v + ';--f:' + v + '">'
+              + '<div class="sj-slider-fill"></div>'
+              + '<button class="sj-join' + (inG ? ' is-on' : '') + '" data-act="join" data-id="' + id + '" title="' + (inG ? 'Aus Gruppe entfernen' : 'Zur Gruppe hinzufügen') + '">' + icon(inG ? 'mdi:speaker' : 'mdi:speaker-off') + '</button>'
+              + '<div class="sj-room-text"><div class="sj-room-name">' + esc(shortName(id)) + '</div><div class="sj-room-state">' + esc(stateTxt) + '</div></div>'
+              + '<div class="sj-room-pct">' + (un ? '' : Math.round(v * 100) + ' %') + '</div></div>'
+              + '<button class="sj-btn' + (a.is_volume_muted ? ' is-on' : '') + (un ? ' is-disabled' : '') + '" data-act="mute" data-id="' + id + '" title="Stumm">' + icon(a.is_volume_muted ? 'mdi:volume-off' : 'mdi:volume-high') + '</button>'
+              + (eqs.length ? '<button class="sj-btn' + (exp ? ' is-on' : '') + (un ? ' is-disabled' : '') + '" data-act="eq" data-id="' + id + '" title="Klang">' + icon('mdi:tune-vertical-variant') + '</button>' : '')
+              + '</div>';
+            if (exp && !un) {
+              html += '<div class="sj-eq">' + eqs.filter((e) => e.kind === 'num' && st(e.id)).map((e) => {
+                const ea = st(e.id).attributes;
+                const min = Number(ea.min != null ? ea.min : -10), max = Number(ea.max != null ? ea.max : 10), step = Number(ea.step || 1);
+                const val = Number(st(e.id).state) || 0;
+                const f = (val - min) / (max - min || 1);
+                const center = min < 0 && max > 0;
+                const l = center ? Math.min(f, 0.5) : 0, w = center ? Math.abs(f - 0.5) : f;
+                return '<div class="sj-slider' + (center ? ' is-center' : '') + '" data-drag="num" data-id="' + e.id + '" data-min="' + min + '" data-max="' + max + '" data-step="' + step + '" style="--l:' + l + ';--w:' + w + ';--f:' + f + '">'
+                  + '<div class="sj-slider-fill"></div><div class="sj-slider-label"><span>' + e.label + '</span><span class="sj-val">' + (val > 0 && center ? '+' : '') + val + '</span></div></div>';
+              }).join('')
+              + '<div class="sj-chips">' + eqs.filter((e) => e.kind === 'sw' && st(e.id)).map((e) =>
+                '<button class="sj-chip' + (st(e.id).state === 'on' ? ' is-on' : '') + '" data-act="sw" data-id="' + e.id + '">' + icon(st(e.id).state === 'on' ? 'mdi:check' : 'mdi:close') + e.label + '</button>').join('') + '</div></div>';
+            }
+          });
+          panel.innerHTML = html;
+        };
+        const toggleJoin = async (id) => {
+          const mem = members();
+          if (mem.indexOf(id) !== -1) {
+            if (mem.length === 1) return toast('Mindestens ein Raum bleibt aktiv');
+            await mp('unjoin', {}, id);
+          } else {
+            await mp('join', { group_members: [id] }, coordinator());
+          }
+        };
+
+        /* ---------- queue ---------- */
+        const loadQueue = async () => {
+          const coord = coordinator();
+          S.q = S.q && S.q.coord === coord ? S.q : { coord, items: null };
+          S.q.loading = true;
+          renderQueue(true);
+          try {
+            const r = await S.H.callService('sonos', 'get_queue', {}, { entity_id: coord }, false, true);
+            const resp = (r && r.response) || {};
+            S.q = { coord, items: resp[coord] || Object.values(resp)[0] || [], t: Date.now() };
+          } catch (e) {
+            S.q = { coord, items: null, error: (e && e.message) || 'Fehler' };
+          }
+          renderQueue(true);
+        };
+        const renderQueue = (force) => {
+          const panel = S.els.panels.queue;
+          const coord = coordinator();
+          const a = attrs(coord);
+          const qKey = coord + '|' + a.queue_size + '|' + (a.media_content_id || '') + '|' + a.media_title;
+          if (!S.q || S.q.coord !== coord || (!S.q.loading && S.sig.queueSrc !== qKey)) {
+            S.sig.queueSrc = qKey;
+            if (!(S.q && S.q.loading)) { loadQueue(); return; }
+          }
+          const cur = (Number(a.queue_position) || 0) - 1;
+          const key = qKey + '|' + cur + '|' + (S.q.loading ? 'L' : '') + '|' + (S.q.items ? S.q.items.length : 'x') + '|' + S.qShowAll + '|' + (st(coord) && st(coord).state);
+          if (!force && S.sig.queue === key) return;
+          S.sig.queue = key;
+          if (S.q.loading && !S.q.items) { panel.innerHTML = '<div class="sj-loading"><div class="sj-spin"></div></div>'; return; }
+          if (!S.q.items) { panel.innerHTML = '<div class="sj-empty">Warteschlange konnte nicht geladen werden.<br>' + esc(S.q.error) + '</div><button class="sj-chip sj-more" data-act="q-reload">' + icon('mdi:refresh') + 'Erneut laden</button>'; return; }
+          const items = S.q.items;
+          if (!items.length) { panel.innerHTML = '<div class="sj-empty">Die Warteschlange ist leer.<br>Spiel eine Playlist aus der Jukebox ab oder hänge Titel an.</div>'; return; }
+          const playing = st(coord) && st(coord).state === 'playing';
+          const from = S.qShowAll ? 0 : Math.max(0, cur - 2);
+          const to = S.qShowAll ? items.length : Math.min(items.length, from + 40);
+          let html = '<div class="sj-h">Warteschlange<small>' + (cur >= 0 ? (cur + 1) + ' / ' : '') + items.length + ' Titel</small></div><div class="sj-list">';
+          if (from > 0) html += '<button class="sj-chip sj-more" data-act="q-all">' + icon('mdi:chevron-up') + from + ' frühere anzeigen</button>';
+          for (let i = from; i < to; i++) {
+            const it = items[i];
+            const isCur = i === cur;
+            html += '<div class="sj-q-row' + (isCur ? ' is-current' : '') + '" data-act="q-play" data-i="' + i + '">'
+              + '<span class="sj-q-idx">' + (isCur ? icon(playing ? 'mdi:volume-high' : 'mdi:pause') : i + 1) + '</span>'
+              + '<div class="sj-q-text"><div class="sj-q-title">' + esc(it.media_title || '–') + '</div><div class="sj-q-sub">' + esc([it.media_artist, it.media_album_name].filter(Boolean).join(' · ')) + '</div></div>'
+              + '<button class="sj-btn sj-btn-s" data-act="q-del" data-i="' + i + '" title="Entfernen">' + icon('mdi:close') + '</button></div>';
+          }
+          if (to < items.length) html += '<button class="sj-chip sj-more" data-act="q-all">' + icon('mdi:chevron-down') + (items.length - to) + ' weitere anzeigen</button>';
+          panel.innerHTML = html + '</div>';
+        };
+
+        /* ---------- panel dispatcher ---------- */
+        const renderPanel = (force) => {
+          const t = S.tab;
+          if (t === 'favorites') renderFavorites(force);
+          else if (t === 'jukebox') {
+            if (S.sig.jbCfg !== S.sig.cfg || !S.els.jbOwn) { S.sig.jbCfg = S.sig.cfg; buildJukebox(); }
+          } else if (t === 'rooms') renderRooms(force);
+          else if (t === 'queue') renderQueue(force);
+        };
+
+        /* ---------- interaction ---------- */
+        const onClick = async (e) => {
+          const t = e.target.closest('[data-act]');
+          if (!t || !root.contains(t)) return;
+          if (S.suppressClick) { S.suppressClick = false; return; }
+          e.stopPropagation();
+          const act = t.dataset.act;
+          const id = t.dataset.id;
+          const i = Number(t.dataset.i);
+          const mode = t.dataset.mode || 'replace';
+          const a = attrs(S.ent);
+          try {
+            switch (act) {
+              case 'playpause': await mp(st(S.ent).state === 'playing' ? 'media_pause' : 'media_play'); break;
+              case 'prev': await mp('media_previous_track'); break;
+              case 'next': await mp('media_next_track'); break;
+              case 'shuffle': await mp('shuffle_set', { shuffle: !a.shuffle }); break;
+              case 'repeat': await mp('repeat_set', { repeat: a.repeat === 'off' || !a.repeat ? 'all' : a.repeat === 'all' ? 'one' : 'off' }); break;
+              case 'mute-group': {
+                const gv = groupVolume();
+                await Promise.all(gv.m.map((m) => mp('volume_mute', { is_volume_muted: !gv.muted }, m)));
+                break;
+              }
+              case 'sleep': {
+                const menu = S.els.sleepMenu;
+                if (menu.hidden) {
+                  const on = ls.get(sleepKey(), 0) > Date.now();
+                  menu.innerHTML = [0, 15, 30, 45, 60, 90].map((m) => '<button class="sj-chip' + (!m && !on ? ' is-on' : '') + '" data-act="sleep-set" data-i="' + m + '">' + (m ? m + ' min' : 'Aus') + '</button>').join('');
+                }
+                menu.hidden = !menu.hidden;
+                break;
+              }
+              case 'sleep-set': {
+                S.els.sleepMenu.hidden = true;
+                if (i > 0) {
+                  await call('sonos', 'set_sleep_timer', { sleep_time: i * 60 }, { entity_id: coordinator() });
+                  ls.set(sleepKey(), Date.now() + i * 60000);
+                  toast('Sleep-Timer: ' + i + ' min');
+                } else {
+                  await call('sonos', 'clear_sleep_timer', {}, { entity_id: coordinator() });
+                  ls.set(sleepKey(), 0);
+                  toast('Sleep-Timer aus');
+                }
+                renderSleep();
+                break;
+              }
+              case 'tab': setTab(t.dataset.tab); break;
+              case 'fav': {
+                const it = S.favs && S.favs[i];
+                if (!it) break;
+                if (it.source) await mp('select_source', { source: it.title });
+                else await mp('play_media', { media_content_id: it.media_content_id, media_content_type: it.media_content_type });
+                break;
+              }
+              case 'fav-reload': loadFavorites(true); break;
+              case 'link': await doLink(mode); break;
+              case 'link-paste': {
+                try {
+                  const txt = await navigator.clipboard.readText();
+                  S.els.input.value = txt || '';
+                  S.onLinkInput && S.onLinkInput();
+                } catch (err) { S.els.input.focus(); toast('Einfügen nicht erlaubt – bitte lange tippen und „Einsetzen“'); }
+                break;
+              }
+              case 'jb': { const p = S.jb && S.jb[i]; if (p) await playLink(p.link.url, mode, p.name); break; }
+              case 'lib': { const it = S.lib && S.lib[i]; if (it) await playItem(it, mode); break; }
+              case 'lib-reload': loadLibrary(true); break;
+              case 'join': await toggleJoin(id); break;
+              case 'join-all': {
+                const mem = members();
+                const add = speakers().filter((x) => st(x).state !== 'unavailable' && mem.indexOf(x) === -1);
+                if (add.length) await mp('join', { group_members: add }, coordinator());
+                break;
+              }
+              case 'solo': {
+                const mem = members();
+                if (mem.length < 2) break;
+                if (coordinator() !== S.ent) await mp('unjoin', {}, S.ent);
+                else await Promise.all(mem.filter((x) => x !== S.ent).map((x) => mp('unjoin', {}, x)));
+                break;
+              }
+              case 'mute': await mp('volume_mute', { is_volume_muted: !attrs(id).is_volume_muted }, id); break;
+              case 'eq': {
+                if (S.expanded.has(id)) S.expanded.delete(id); else S.expanded.add(id);
+                S.sig.rooms = null;
+                renderRooms(true);
+                break;
+              }
+              case 'sw': await call('switch', 'toggle', {}, { entity_id: id }); break;
+              case 'q-play': await call('sonos', 'play_queue', { queue_position: i }, { entity_id: coordinator() }); break;
+              case 'q-del': {
+                await call('sonos', 'remove_from_queue', { queue_position: i }, { entity_id: coordinator() });
+                if (S.q && S.q.items) { S.q.items.splice(i, 1); S.sig.queue = null; renderQueue(true); }
+                setTimeout(loadQueue, 900);
+                break;
+              }
+              case 'q-all': S.qShowAll = !S.qShowAll; renderQueue(true); break;
+              case 'q-reload': loadQueue(); break;
+            }
+          } catch (err) { /* toast already shown by call() */ }
+        };
+
+        const fracOf = (el, x) => {
+          const r = el.getBoundingClientRect();
+          return clamp((x - r.left) / (r.width || 1), 0, 1);
+        };
+        const throttleSend = (key, fn, final) => {
+          const now = Date.now();
+          S.sendT = S.sendT || {};
+          clearTimeout(S.sendT[key + 't']);
+          if (final || !S.sendT[key] || now - S.sendT[key] > 220) { S.sendT[key] = now; fn(); }
+          else S.sendT[key + 't'] = setTimeout(() => { S.sendT[key] = Date.now(); fn(); }, 220);
+        };
+        const dragApply = (d, frac, final) => {
+          const el = d.el;
+          if (d.kind === 'seek') {
+            const { dur } = progressNow();
+            setFill(el, frac);
+            setText(S.els.pos, fmt(frac * dur));
+            setText(S.els.dur, '-' + fmt(dur - frac * dur));
+            if (final && dur) mp('media_seek', { seek_position: Math.round(frac * dur) }, coordinator()).catch(() => {});
+          } else if (d.kind === 'groupvol') {
+            setFill(el, frac);
+            setText(S.els.volVal, Math.round(frac * 100) + ' %');
+            const base = d.base;
+            if (!base) return;
+            throttleSend('gv', () => {
+              if (base.length === 1) return mp('volume_set', { volume_level: Math.round(frac * 100) / 100 }, base[0].id).catch(() => {});
+              const delta = frac - d.avg;
+              base.forEach((b) => mp('volume_set', { volume_level: Math.round(clamp(b.v + delta, 0, 1) * 100) / 100 }, b.id).catch(() => {}));
+            }, final);
+          } else if (d.kind === 'vol') {
+            setFill(el, frac);
+            const pct = el.querySelector('.sj-room-pct');
+            if (pct) pct.textContent = Math.round(frac * 100) + ' %';
+            throttleSend('v' + d.id, () => mp('volume_set', { volume_level: Math.round(frac * 100) / 100 }, d.id).catch(() => {}), final);
+          } else if (d.kind === 'num') {
+            const min = Number(el.dataset.min), max = Number(el.dataset.max), step = Number(el.dataset.step) || 1;
+            const val = clamp(Math.round((min + frac * (max - min)) / step) * step, min, max);
+            const f = (val - min) / (max - min || 1);
+            setFill(el, f, el.classList.contains('is-center'));
+            const lab = el.querySelector('.sj-val');
+            if (lab) lab.textContent = (val > 0 && min < 0 ? '+' : '') + val;
+            if (final) call('number', 'set_value', { value: val }, { entity_id: d.id }).catch(() => {});
+          }
+        };
+        const onMove = (e) => {
+          const d = S.drag;
+          if (!d || e.pointerId !== d.pid) return;
+          const dx = e.clientX - d.x0, dy = e.clientY - d.y0;
+          if (!d.active) {
+            if (Math.abs(dy) > 10 && Math.abs(dy) > Math.abs(dx)) return endDrag(e, true);
+            if (Math.abs(dx) < 7) return;
+            d.active = true;
+            d.el.classList.add('is-dragging');
+            try { d.el.setPointerCapture(d.pid); } catch (err) { /* ignore */ }
+            if (d.kind === 'groupvol') {
+              const gv = groupVolume();
+              d.base = gv.m.map((id) => ({ id, v: Number(attrs(id).volume_level) || 0 }));
+              d.avg = gv.v;
+            }
+          }
+          if (e.cancelable) e.preventDefault();
+          dragApply(d, fracOf(d.el, e.clientX), false);
+        };
+        const endDrag = (e, abort) => {
+          const d = S.drag;
+          if (!d) return;
+          window.removeEventListener('pointermove', onMove);
+          window.removeEventListener('pointerup', onUp);
+          window.removeEventListener('pointercancel', onCancel);
+          S.drag = null;
+          d.el.classList.remove('is-dragging');
+          if (d.active) {
+            S.suppressClick = true;
+            setTimeout(() => { S.suppressClick = false; }, 60);
+            if (!abort) dragApply(d, fracOf(d.el, e.clientX), true);
+          } else if (!abort && d.kind === 'seek' && e && e.type === 'pointerup') {
+            dragApply(d, fracOf(d.el, e.clientX), true);
+          }
+          if (S.roomsDirty) setTimeout(() => renderRooms(true), 400);
+        };
+        const onUp = (e) => endDrag(e, false);
+        const onCancel = (e) => endDrag(e, true);
+        const onDown = (e) => {
+          if (e.button != null && e.button !== 0) return;
+          const el = e.target.closest('[data-drag]');
+          if (!el || !root.contains(el) || e.target.closest('[data-act]')) return;
+          if (el.classList.contains('is-disabled')) return;
+          if (S.drag) endDrag(null, true);
+          S.drag = { el, kind: el.dataset.drag, id: el.dataset.id, x0: e.clientX, y0: e.clientY, pid: e.pointerId, active: false };
+          window.addEventListener('pointermove', onMove, { passive: false });
+          window.addEventListener('pointerup', onUp);
+          window.addEventListener('pointercancel', onCancel);
+        };
+        root.addEventListener('click', onClick);
+        root.addEventListener('pointerdown', onDown);
+
+        S.timer = setInterval(() => {
+          if (!root.isConnected) return;
+          S.H = ctx._hass || S.H;
+          renderProgress();
+          renderSleep();
+        }, 1000);
+
+        S.destroy = () => {
+          clearInterval(S.timer);
+          clearTimeout(S.toastT);
+          if (S.drag) endDrag(null, true);
+          root.removeEventListener('click', onClick);
+          root.removeEventListener('pointerdown', onDown);
+          root.remove();
+        };
+
+        S.update = (H, ent, cfg) => {
+          S.H = H; S.ent = ent; S.cfg = cfg;
+          if (root.parentNode !== ctx.content) ctx.content.appendChild(root);
+          const cfgSig = JSON.stringify(cfg) + '|' + ent;
+          if (S.sig.cfg !== cfgSig) {
+            S.sig = { cfg: cfgSig };
+            const acc = String(cfg.accent_color || '').trim();
+            const accVal = !acc ? 'var(--bubble-accent-color, var(--accent-color))' : /^(#|rgb|hsl|var\(|color-mix)/i.test(acc) ? acc : 'var(--' + acc + '-color, ' + acc + ')';
+            root.style.setProperty('--sj-accent', accVal);
+            if (cfg.accent_text_color) root.style.setProperty('--sj-accent-text', cfg.accent_text_color); else root.style.removeProperty('--sj-accent-text');
+            root.style.setProperty('--sj-art-size', (Number(cfg.cover_size) || 280) + 'px');
+            toggle(root, 'sj-compact', cfg.player_layout === 'compact');
+            S.els.player.querySelector('.sj-art').hidden = cfg.show_cover === false;
+            S.els.bg.hidden = cfg.cover_glow === false;
+            S.last = {};
+            const tabs = tabList();
+            const saved = ls.get('sj-tab-' + ent, null);
+            if (!S.tab || tabs.indexOf(S.tab) === -1) S.tab = tabs.indexOf(saved) !== -1 && cfg.remember_tab !== false ? saved : tabs.indexOf(cfg.default_tab) !== -1 ? cfg.default_tab : tabs[0];
+            S.els.jbOwn = null;
+          }
+          renderPlayer();
+          renderTabs();
+          renderPanel(false);
+        };
+        return S;
+      })();
+
+      const C = ctx.__sj;
+      C.trackedIds(H0, entity, cfg).forEach((id) => { void hass.states[id]; });
+      if (typeof onTeardown === 'function') onTeardown(() => { if (ctx.__sj === C) { C.destroy(); ctx.__sj = null; } });
+      C.update(H0, entity, cfg);
+      return '';
+    })()}
+  editor:
+    - type: expandable
+      title: Darstellung
+      icon: mdi:palette-outline
+      expanded: true
+      schema:
+        - name: accent_color
+          label: Akzentfarbe (z. B. #ffc47e oder orange – leer = Standard)
+          selector:
+            text: {}
+        - name: accent_text_color
+          label: Icon-Farbe auf der Akzentfarbe (optional)
+          selector:
+            text: {}
+        - name: player_layout
+          label: Player-Layout
+          default: large
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Groß – Cover oben
+                  value: large
+                - label: Kompakt – Cover links
+                  value: compact
+        - name: cover_size
+          label: Maximale Cover-Größe
+          default: 280
+          selector:
+            number:
+              min: 120
+              max: 480
+              step: 10
+              unit_of_measurement: px
+        - name: show_cover
+          label: Cover anzeigen
+          default: true
+          selector:
+            boolean: {}
+        - name: cover_glow
+          label: Farbschimmer des Covers im Hintergrund
+          default: true
+          selector:
+            boolean: {}
+        - name: strip_sonos
+          label: „Sonos“ aus Lautsprechernamen entfernen
+          default: true
+          selector:
+            boolean: {}
+    - type: expandable
+      title: Bereiche
+      icon: mdi:tab
+      schema:
+        - name: tabs
+          label: Angezeigte Bereiche (leer = alle)
+          selector:
+            select:
+              multiple: true
+              mode: list
+              options:
+                - label: Favoriten
+                  value: favorites
+                - label: Jukebox
+                  value: jukebox
+                - label: Räume
+                  value: rooms
+                - label: Warteschlange
+                  value: queue
+        - name: default_tab
+          label: Startbereich
+          default: favorites
+          selector:
+            select:
+              mode: dropdown
+              options:
+                - label: Favoriten
+                  value: favorites
+                - label: Jukebox
+                  value: jukebox
+                - label: Räume
+                  value: rooms
+                - label: Warteschlange
+                  value: queue
+        - name: remember_tab
+          label: Zuletzt geöffneten Bereich merken
+          default: true
+          selector:
+            boolean: {}
+        - name: favorite_columns
+          label: Spalten bei Favoriten
+          default: 3
+          selector:
+            number:
+              min: 2
+              max: 5
+              mode: slider
+    - type: expandable
+      title: Jukebox
+      icon: mdi:playlist-music
+      schema:
+        - name: jukebox_title
+          label: Überschrift
+          default: Deine Jukebox
+          selector:
+            text: {}
+        - name: playlists
+          label: Playlists (Spotify-Link oder spotify:playlist:…)
+          selector:
+            object:
+              multiple: true
+              label_field: name
+              description_field: uri
+              fields:
+                name:
+                  label: Name (leer = von Spotify)
+                  selector:
+                    text: {}
+                uri:
+                  label: Spotify-Link
+                  required: true
+                  selector:
+                    text: {}
+                image:
+                  label: Bild-URL (leer = Cover von Spotify)
+                  selector:
+                    text: {}
+                icon:
+                  label: Ersatz-Icon
+                  selector:
+                    icon: {}
+        - name: jukebox_columns
+          label: Spalten bei der Jukebox
+          default: 2
+          selector:
+            number:
+              min: 1
+              max: 4
+              mode: slider
+        - name: show_link_input
+          label: Feld zum Einfügen von Spotify-Links
+          default: true
+          selector:
+            boolean: {}
+        - name: show_spotify_library
+          label: Spotify-Bibliothek anzeigen (Spotify-Integration nötig)
+          default: true
+          selector:
+            boolean: {}
+        - name: autoload_library
+          label: Spotify-Bibliothek automatisch laden
+          default: true
+          selector:
+            boolean: {}
+        - name: library_columns
+          label: Spalten bei der Spotify-Bibliothek
+          default: 3
+          selector:
+            number:
+              min: 2
+              max: 5
+              mode: slider
+        - name: shuffle_on_play
+          label: Beim Abspielen einer Playlist Zufallswiedergabe einschalten
+          default: false
+          selector:
+            boolean: {}
+    - type: expandable
+      title: Räume & Klang
+      icon: mdi:speaker-multiple
+      schema:
+        - name: speakers
+          label: Lautsprecher (leer = alle Sonos-Lautsprecher)
+          selector:
+            entity:
+              multiple: true
+              filter:
+                domain: media_player
+                integration: sonos
+        - name: show_eq
+          label: Klangeinstellungen (Bass, Höhen, Loudness …)
+          default: true
+          selector:
+            boolean: {}
+    - type: expandable
+      title: Erweitert
+      icon: mdi:cog-outline
+      schema:
+        - name: show_base_card
+          label: Ursprüngliche Media-Player-Leiste zusätzlich anzeigen
+          default: false
+          selector:
+            boolean: {}

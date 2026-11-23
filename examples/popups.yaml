@@ -1,0 +1,35 @@
+# Beispiel 1: eigenes Musik-Pop-up mit großem Cover
+type: custom:bubble-card
+card_type: pop-up
+hash: "#musik-wohnzimmer"
+name: Musik Wohnzimmer
+icon: mdi:music
+entity: media_player.wohnzimmer
+cards:
+  - type: custom:bubble-card
+    card_type: media-player
+    entity: media_player.wohnzimmer
+    modules:
+      - sonos_jukebox
+    sonos_jukebox:
+      accent_color: "#ffc47e"
+      playlists:
+        - name: Kochen
+          uri: https://open.spotify.com/playlist/DEINE_PLAYLIST_ID
+        - uri: spotify:album:DEINE_ALBUM_ID   # Name und Cover kommen dann von Spotify
+
+---
+# Beispiel 2: kompakter Player als Teil eines Raum-Pop-ups
+type: custom:bubble-card
+card_type: media-player
+entity: media_player.schlafzimmer
+modules:
+  - sonos_jukebox
+sonos_jukebox:
+  accent_color: "#b9a7ff"
+  player_layout: compact
+  default_tab: favorites
+  tabs:
+    - favorites
+    - jukebox
+    - rooms
